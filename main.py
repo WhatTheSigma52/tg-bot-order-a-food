@@ -4,6 +4,8 @@ from dotenv import load_dotenv
 from telebot import types
 import json
 from menu import menu_items, ITEMS_PER_PAGE
+import re
+import string
 
 
 load_dotenv()
@@ -26,10 +28,24 @@ def close_json_file(data):
 
 def correct_number(phone_number):
     '''Check user's phone num is it correct or not.'''
-    if isinstance(int(phone_number[1:]), int):
+    phone_lst = []
+    for i in phone_number:
+        try:
+            phone_lst.append(int(i))
+        except:
+            if i == '+' or i == ' ':
+                del i
+            else:
+                return False
+    if (''.join(map(str, phone_lst))) and len((''.join(map(str, phone_lst)))) == 11:
         return True
     else:
         return False
+    # pattern = re.compile(r'^((8|\+7)[\- ]?)?(\(?\d{3}\)?[\- ]?)?[\d\- ]{7,10}$')
+    # print(phone_number)
+    # if pattern.match(phone_number):
+    #     return True
+    # return False
 
 
 def get_cart(id):
@@ -112,22 +128,25 @@ def menu(page=0):
 def save_client(name, phone_number, id, message):
     '''Save client in JSON-file.'''
     if correct_number(phone_number):
+        phone_number = phone_number.replace(' ', '')
+        for i in string.punctuation:
+            phone_number = phone_number.replace(i, '')
         data = open_json_file()
         data['clients'].append({"id": f"{id}",
                                 "name": f"{name}",
                                 "phone": f"{phone_number}",
                                 "cart": {}})
+        close_json_file(data)
+        bot.send_message(message.chat.id, 'Ваши данные сохранены')
     else:
         bot.send_message(message.chat.id,
                          'Вы ввели неправильные личные данные')
-    close_json_file(data)
-    bot.send_message(message.chat.id, 'Ваши данные сохранены')
 
 
 def add_info(message):
     '''Ask user for personal info.'''
     bot.send_message(message.chat.id,
-                     'Введите ваше имя, номер телефона через запятую:')
+                     'Введите вашe имя, номер телефона через запятую:')
     bot.register_next_step_handler_by_chat_id(message.chat.id,
                                               lambda message:
                                               save_client(
@@ -155,7 +174,8 @@ def start(message):
         if str(message.chat.id) in i["id"]:
             break
     else:
-        bot.register_next_step_handler_by_chat_id(message, add_info(message))
+        bot.register_next_step_handler_by_chat_id(message,
+                                                  add_info(message))
 
 
 @bot.message_handler(func=lambda message: True)
@@ -210,12 +230,8 @@ def query_handler(call):
                 for item in client["cart"]:
                     if client["cart"][item] < 2:
                         del client["cart"][item]
-                        break
-                    if item == name:
+                    else:
                         client["cart"][item] -= 1
-                        break
-                else:
-                    del client["cart"][item]
         close_json_file(data)
         bot.edit_message_text(text='Корзина:',
                               message_id=call.message.message_id,
