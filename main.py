@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from telebot import types
 import json
 from menu import menu_items, ITEMS_PER_PAGE
-import re
+# import re
 import string
 
 
@@ -37,7 +37,8 @@ def correct_number(phone_number):
                 del i
             else:
                 return False
-    if (''.join(map(str, phone_lst))) and len((''.join(map(str, phone_lst)))) == 11:
+    end_num = (''.join(map(str, phone_lst)))
+    if int(end_num) and len(end_num) == 11:
         return True
     else:
         return False
