@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from telebot import types
 import json
 from menu import menu_items, ITEMS_PER_PAGE
-# import re
+import re
 import string
 
 
@@ -28,33 +28,16 @@ def close_json_file(data):
 
 def correct_number(phone_number):
     '''Check user's phone num is it correct or not.'''
-    phone_lst = []
-    for i in phone_number:
-        try:
-            phone_lst.append(int(i))
-        except:
-            if i == '+' or i == ' ':
-                del i
-            else:
-                return False
-    end_num = (''.join(map(str, phone_lst)))
-    if int(end_num) and len(end_num) == 11:
+    pattern = re.compile(r'^((8|\+7)[\- ]?)?(\(?\d{3}\)?[\- ]?)?[\d\- ]{7,10}$')
+    if pattern.match(phone_number):
         return True
-    else:
-        return False
-    # pattern = re.compile(r'^((8|\+7)[\- ]?)?(\(?\d{3}\)?[\- ]?)?[\d\- ]{7,10}$')
-    # print(phone_number)
-    # if pattern.match(phone_number):
-    #     return True
-    # return False
+    return False
 
 
 def get_cart(id):
     '''Get user's cart from JSON_file.'''
     data = open_json_file()
-    for i in data['clients']:
-        if i['id'] == str(id):
-            return i['cart']
+    return data[str(id)].get("cart")
 
 
 def order_cart(message):
@@ -84,7 +67,7 @@ def order_cart(message):
 
 def make_cart(message):
     '''Make cart and products can be added or delete.'''
-    cart = get_cart(message.chat.id)
+    cart = get_cart(str(message.chat.id))
     if cart:
         markup = types.InlineKeyboardMarkup(row_width=3)
         for name in cart:
@@ -126,37 +109,6 @@ def menu(page=0):
     return markup
 
 
-def save_client(name, phone_number, id, message):
-    '''Save client in JSON-file.'''
-    if correct_number(phone_number):
-        phone_number = phone_number.replace(' ', '')
-        for i in string.punctuation:
-            phone_number = phone_number.replace(i, '')
-        data = open_json_file()
-        data['clients'].append({"id": f"{id}",
-                                "name": f"{name}",
-                                "phone": f"{phone_number}",
-                                "cart": {}})
-        close_json_file(data)
-        bot.send_message(message.chat.id, 'Ваши данные сохранены')
-    else:
-        bot.send_message(message.chat.id,
-                         'Вы ввели неправильные личные данные')
-
-
-def add_info(message):
-    '''Ask user for personal info.'''
-    bot.send_message(message.chat.id,
-                     'Введите вашe имя, номер телефона через запятую:')
-    bot.register_next_step_handler_by_chat_id(message.chat.id,
-                                              lambda message:
-                                              save_client(
-                                                message.text.split(',')[0],
-                                                message.text.split(',')[1],
-                                                message.chat.id,
-                                                message))
-
-
 @bot.message_handler(commands=['start'])
 def start(message):
     '''Main menu with buttons and check user in JSON-data'''
@@ -171,12 +123,42 @@ def start(message):
                      'Добро пожаловать в доставку ...',
                      reply_markup=markup)
     data = open_json_file()
-    for i in data["clients"]:
-        if str(message.chat.id) in i["id"]:
-            break
+    if str(message.chat.id) in data:
+        pass
     else:
-        bot.register_next_step_handler_by_chat_id(message,
-                                                  add_info(message))
+        msg = bot.send_message(message.chat.id,
+                     'Введите ваше имя:')
+        bot.register_next_step_handler(msg,
+                                        ask_phone)
+
+
+def ask_phone(message):
+    '''Ask user for personal info.'''
+    user_info =  {
+        "name": message.text,
+        "cart": {}
+    }
+    
+    data = open_json_file()
+    data[str(message.chat.id)] = user_info
+    close_json_file(data)
+    bot.send_message(message.chat.id,
+                            'Введите ваш номер телефона:')
+    bot.register_next_step_handler(message,
+                                    save_info)
+
+
+def save_info(message):
+    if correct_number(message.text):
+        data = open_json_file()
+        data[str(message.chat.id)]["phone"] = message.text
+        bot.send_message(message.chat.id,
+                                 'Сохранено')
+        close_json_file(data)
+    else:
+        bot.send_message(message.chat.id,
+                         'Проверьте корректность введенного номера телефона.'
+                         'Повторите попытку: /start')
 
 
 @bot.message_handler(func=lambda message: True)
@@ -204,38 +186,34 @@ def handler_all(message):
                          ' Чтобы вернуться в главное меню нажмите: /start')
 
 
+
 @bot.callback_query_handler(func=lambda call: True)
 def query_handler(call):
     '''Callback data.'''
     if call.data.startswith('plus'):
         _, name = call.data.split(';')
         data = open_json_file()
-        for client in data["clients"]:
-            if client['id'] == str(call.message.chat.id):
-                for item in client["cart"]:
-                    if item == name:
-                        client["cart"][item] += 1
-                        break
-                else:
-                    client["cart"][item] = 1
+        client_cart_plus = data[str(call.message.chat.id)].get("cart")
+        if name in client_cart_plus:
+            client_cart_plus[name] += 1
+        else:
+            client_cart_plus[name] = 1
         close_json_file(data)
         bot.edit_message_text(text='Корзина:',
-                              chat_id=call.message.chat.id,
                               message_id=call.message.message_id,
+                              chat_id=call.message.chat.id,
                               reply_markup=make_cart(call.message))
     if call.data.startswith('minus'):
         _, name = call.data.split(';')
         data = open_json_file()
-        for client in data["clients"]:
-            if client['id'] == str(call.message.chat.id):
-                for item in client["cart"]:
-                    if client["cart"][item] < 2:
-                        del client["cart"][item]
-                    else:
-                        client["cart"][item] -= 1
+        client_cart_minus = data[str(call.message.chat.id)].get("cart")
+        if client_cart_minus[name] <= 1:
+            del client_cart_minus[name]
+        else:
+            client_cart_minus[name] -= 1
         close_json_file(data)
         bot.edit_message_text(text='Корзина:',
-                              message_id=call.message.message_id,
+                              message_id=str(call.message.message_id),
                               chat_id=call.message.chat.id,
                               reply_markup=make_cart(call.message))
     if call.data.startswith('page'):
@@ -248,13 +226,12 @@ def query_handler(call):
     if call.data.startswith('menu'):
         _, name = call.data.split(';')
         data = open_json_file()
-        for client in data['clients']:
-            if client['id'] == str(call.message.chat.id):
-                if name not in client["cart"]:
-                    client["cart"][name] = 1
-                else:
-                    client["cart"][name] += 1
-                bot.send_message(call.message.chat.id,
+        menu_cart = data[str(call.message.chat.id)].get("cart")
+        if name not in menu_cart:
+            menu_cart[name] = 1
+        else:
+            menu_cart[name] += 1
+        bot.send_message(call.message.chat.id,
                                  f'{name} добавлен.')
         close_json_file(data)
 
