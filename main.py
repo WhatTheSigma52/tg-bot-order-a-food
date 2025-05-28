@@ -5,7 +5,6 @@ from telebot import types
 import json
 from menu import menu_items, ITEMS_PER_PAGE
 import re
-import string
 
 
 load_dotenv()
@@ -63,6 +62,33 @@ def order_cart(message):
     else:
         bot.send_message(message.chat.id,
                          'У вас пустая корзина.')
+
+
+def ask_geo_mark(message):
+    '''Ask user for address.'''
+    msg = bot.send_message(message.chat.id,
+                           'Введите адрес текстом или геометкой Telegram.')
+    bot.register_next_step_handler(msg,
+                                   geo_mark)
+
+def geo_mark(message):
+    '''Send user's address to user.'''
+    bot.send_message(message.chat.id,
+                     f'Вы выбрали адрес: message.text')
+    total = calculate_cart_total(message.chat.id)
+    bot.send_message(message.chat.id,
+                     f'Стоимость заказа: {total} рублей.\n'
+                     'Доступна только оплата наличными курьеру.\n'
+                     'Заказ принят в работу🚀')
+    
+
+def calculate_cart_total(id):
+    cart = get_cart(id)
+    count = 0
+    for item in menu_items:
+        if item["name"] in cart:
+            count += (int(item["price"].split()[0]) * cart[item["name"]])
+    return count
 
 
 def make_cart(message):
@@ -138,7 +164,6 @@ def ask_phone(message):
         "name": message.text,
         "cart": {}
     }
-    
     data = open_json_file()
     data[str(message.chat.id)] = user_info
     close_json_file(data)
@@ -181,9 +206,7 @@ def handler_all(message):
                          'Вы отменили заказ.'
                          ' Чтобы вернуться в главное меню нажмите: /start')
     if message.text.startswith('Да'):
-        bot.send_message(message.chat.id,
-                         'Вы подтвердили заказ. Ожидайте доставки.'
-                         ' Чтобы вернуться в главное меню нажмите: /start')
+        ask_geo_mark(message)
 
 
 
